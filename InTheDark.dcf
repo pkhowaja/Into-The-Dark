@@ -1,0 +1,13 @@
+name: InTheDark
+title: InTheDark
+username:
+account: preetkhowaja
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 1610928
+bundleId: 2680024
+url: https://preetkhowaja.shinyapps.io/InTheDark/
+when: 1576725609.91066
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: bootstrap.min.css

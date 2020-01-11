@@ -1,0 +1,364 @@
+---
+title: "In the Dark: Exploring Racial Disparities in Traffic Stops Before and After Sunset"
+subtitle: "Brandon Tran '21, Pomona College, Claremont, CA  \n Preet Khowaja '20, Pomona College, Claremont, CA"
+date: "December 2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(cowplot)
+```
+
+# 1 | Introduction & Motivation (Preet)
+Investigating racial bias statistically is a fascinating endeavour. It is what motivated us to pick up the Stanford Open Policing Project and apply the analytical tools used in it to six major cities in California. Bias and racial bias, in specific, are psychological and difficult to find in terms of direct causation. However, the challenge of using statistical tools, which are very concrete, to find evidence for racial bias, difficult to read through numbers, is what made this project very interesting for us. 
+
+Racial bias in lawkeeping bodies has been covered by the media in vast detail. It is in many extreme cases of police brutality that these are brought to light. Traffic stops, on the other hand, could be seemingly mild police interactions but are where the American public interacts with the police the most. Over 20 million Americans are pulled over by the police in a year. This means that this specific instance of interaction must be documented and analyzed. 
+
+The method we decided to use for our work was also adopted from the Stanford Computational Policy Lab. It was originally devised in 2006 by Jeffrey Grogger and Greg Ridgeway. The test assumes that the race of drivers cannot be observed at night and so all stops are free from racial bias. A lack of bias during the day should reveal similar proportions of stops by race. The paper released by the Stanford team investigated for racial bias in Texas and discovered statistically significant differences in the rate that black folks were stopped by the police during the day and at night. The same was true for white drivers who were stopped at a higher rate at night than during the day. 
+
+We decided to use the same metric for San Francisco, San Jose, San Diego, Los Angeles, Bakersfield and Oakland. However, the Stanford project used only a small time frame in their Texas example. This time frame was 60 minutes before sunset began to 60 minutes after sunset was complete. It was interesting to us to investigate why they chose this specific time frame as compared to a day/night split. The reason could likely be the elimination of 'noise' from the data if it included the entire day. Examples of the noise they were trying to avoid could be the percentage of drivers on the road who are white and colored and how that changes throughout the day. 
+
+
+# 2 | The Data (Brandon)
+In order to address our question in the context of California, it was necessary to acquire data that contained police records of traffic stops conducted throughout the past decade that included information on the time and location of stop, as well as the race of the driver who was stopped.  Fortunately, The Stanford Open Policing Project hosts an public amalgamation of such records for forty-one US states, and since the published records were collected from government-hosted sources that are open to the public, we faced no ethical issues in terms of utilizing the data.
+
+As expected, some manipulation was necessary in order to merge the data from cities across California and determine (1) whether or not a stop occurred during daylight or not and (2) how many minutes prior to or after sunset the stop occurred.  The overarching goal was to write a series of functions that, given merely URLs of data hosted on Stanford's site and city codes for the corresponding cities, would return an amalgamated dataset with the following variables: `date`, `time`, `lat` (latitude), `lng` (longitude), `subject_race`, `daytime` (a boolean that returns `TRUE` if the stop occurs during the daytime), `minsto.set` (minutes to or after sunset), and `city` (the city code).  A walkthrough of these functions will be included here, and the reproducible code itself can be found in \textbf{Appendix A}.
+
+Via the R packages `StreamMetabolism` and `hms`, we were able to write **get_time**, which returns a vector containing sunrise and sunset times when given a latitude, longitude, and date.  The function corrects for daylight savings when applicable and calculates the exact sunrise and sunset times for the given day.  **classify** then returns whether or not a given time has occurred before sunset and after sunrise via a boolean that evaluates to `TRUE`.  Both of these functions inform **mutateClass**, which calculates the aforementioned boolean for each row in a dataframe and appends a column, `daytime`, with these classifications.  It also determines the number of minutes before or after sunset that the stop occurred, where values before are positive and values after are negative.
+
+Now, in order to circumvent the issue of some datasets missing the exact latitude and longitude of each stop, we wrote **getCityCoords**, which takes in a link to a city's data and returns the city center's coordinates.  Unfortunately, this is the one non-automated step of our data collection in that the city center's coordinates must be manually inputted into the function.  We hope to automate this in the future to allow for easy amalgamation of all data that lacks specific coordinates.
+
+This function is then used in **getData**, which takes in only a link to data and returns a sample (1:100) of the data with all of the modifications of **mutateClass** applied.  At this point, the function is ready to be utilized on individual datasets specific to each city.
+
+Our final step was to write a master function that would perform **getData** on any amount of datasets, then amalgamate all of the resulting samples into one large dataframe.  This function is **parseData**, which takes in a vector of links to data from The Stanford Open Policing Project site and a vector of corresponding city codes and returns the desired dataframe.
+
+The following code will generate a copy of that data and load it into your Global Environment as `ca.df`, though note that it will be necessary to evaluate the R chunks in Appendix A \textbf{prior} to running this code (at this time, all chunks have been set to `eval=FALSE`).  With four cores, it will take approximately five to ten minutes to generate the data.
+
+```{r, eval=FALSE}
+links <- c('https://stacks.stanford.edu/file/druid:hp256wp2687/hp256wp2687_ca_san_francisco_2019_08_13.rds',
+           'https://stacks.stanford.edu/file/druid:hp256wp2687/hp256wp2687_ca_oakland_2019_08_13.rds',
+           'https://stacks.stanford.edu/file/druid:hp256wp2687/hp256wp2687_ca_san_jose_2019_08_13.rds',
+           'https://stacks.stanford.edu/file/druid:hp256wp2687/hp256wp2687_ca_bakersfield_2019_08_13.rds',
+           'https://stacks.stanford.edu/file/druid:hp256wp2687/hp256wp2687_ca_los_angeles_2019_08_13.rds',
+           'https://stacks.stanford.edu/file/druid:hp256wp2687/hp256wp2687_ca_san_diego_2019_08_13.rds')
+city.codes <- c('sf', 'ok', 'sj', 'bf', 'la', 'sd')
+
+ca.df <- parseData(links, city.codes)
+```
+
+As an alternative, a saved version of the dataset has been loaded into the \textbf{Data} folder of this repository and can be loaded and stored into your Global Environment with the following code:
+
+```{r, eval=FALSE}
+ca.df <- readRDS(file='Data/cadata.Rda')
+```
+
+This completes the preprocessing necessary to access the data that was used in our analyses.
+
+# 3 | Statistical Findings (Brandon)
+We performed a $\chi^{2}$ test for Independence in order to evaluate the null hypothesis: that `race` and `time of arrest` are independent of each other, where `time of arrest` refers to whether or not a stop is before or after sunset.  With $5$ degrees of freedom, the test yielded a $p$-value of $p = 2.2 \times 10^{-16}$, which is less than $\alpha = .05$, thus allowing us to reject the null and conlcude that the two variables are, in fact, dependent.
+
+In more colloquial terms, we disproved the assumption that knowing what time of day it is has no effect on one's guess of the race of a random driver.  Rather, a relationship does, in fact, exist here: If given the time of day, we should guess a certain race moreso than the others when considering a random driver.
+
+Which race, specifically, should we guess?  Unforunately, our test does not tell us this, but some local analysis allowed us to test some of our predispositions.  Specifically, we tested `white` against `Asian/Pacific Islander`, `Black`, and `Hispanic`.  For the sake of technicality: Under Bonferroni's Inequality, we needed the sum of our $p$-values to be less than $\alpha = .05$ for significance.  When comparing each of the above races against `white`, we gain small $p$-values that sum to less than $\alpha = .05$.  Specifically, these $p$-values are $4.03 \times 10^{-12}$, $2.2 \times 10^{-16}$, and $2.2 \times 10^{-16}$, for `Asian/Pacific Islander`, `Black`, and `Hispanic`, respectively, suggesting that the distribution of `white` traffic stops differs from the rest.
+
+The code for the requisite $\chi^{2}$ tests can be found in \textbf{Appendix B} and can be run after generating the dataset specified in Section 2 and Appendix A.
+
+Visualizations will aid in the interpretation of these results.
+
+# 4 | Visualizations and Demonstration (Preet)
+
+The visual aids we thought necessary to see changing rates were pie charts and histograms. We demonstrated this finished work on an interactive Shiny Applet that allows users to change the time frame from 30 minutes before and after sunset to 600 minutes (10 hours) before and after sunset. By doing this, we wished to see if there were changes in day and night rates depending on the time frame we selected. We observed no such trends in the cities we were looking at. 
+
+R's `ggplot2` package was great to create the visual aid we wanted to use on our Shiny App. I have included some of the visual conclusions here. 
+
+When we observed histograms of changing proportions by limiting the time frame, we noticed no major changes. See Figure 1 and 2 at the end.
+
+The results show that adjusting the time frame does not give us satisfactory results. In fact, the difference in the day/night proportions of white driver stops are is much greater for a larger time frame. 
+
+However, in a different kind of visualization, we do observe evidence of biased stops. Below, I created pie charts (see Figure 3) where the whole represents all stops for a race. Then, I split the chart by how many of the stops were during the day and how many were at night. While the pie charts below are for LA, charts for 4 other cities looked similar. The similarity lied in how of all white people stops, a much smaller proportion was during the day as compared to day proportions for black people. For coloured folks, the split was more even. This suggests that there is evidence that white drivers may be let off more easily than other races during the day.
+
+Here is a link to the Shiny App: 
+https://preetkhowaja.shinyapps.io/InTheDark/
+
+
+# 5 | Limitations (Brandon & Preet)
+From a statistical standpoint, we cannot generally say any more than the fact that a driver's race is \textbf{not} independent of whether or not a traffic stop is conducted during the daytime or nighttime.  However, local analysis reveals that this independence is individually seen between each non-white race and white stops; that is, there is some indication that the disparity between daytime and nighttime stops for white drivers is different from that of every other race.
+
+Visualizations suggest that the difference detected by the $\chi^{2}$ tests is that white drivers are stopped more often during the day than at night, whereas for non-white drivers, an approximately equal number of stops are conducted during the day and night.  While this does not allow us to statistically conclude that police bias exists, or even that white drivers are stopped more often during the day than at night, it suggests that these assertions are true.
+
+There are limitations to the visual elements too. Proportions don't account for other factors that could be determining the racial split or the day/night split of stops. These factors could include, for example, what proportion of drivers on the road are white, black and hispanic or the likelihood that drivers at night tend to be more often people of color. 
+
+The veil of darkness test itself has many limitations including the fact that it assumes that there is no way of knowing a driver's race at night. This excludes instances of well-lit places and inside lights of the vehicle being switched on. 
+
+# 6 | Conclusion (Preet)
+
+The results of our statistical analysis and visualization work was different from what we expected. We expected to see our results in a clearer way and often it was a challenge to direction our findings. However, with data wrangling and visualization it is essential to know what you want as an output. The challenge of working with a dataset to find trends and patterns was a fascinating one and we were not entirely unsuccessful in finding statistical and visual elements that could be used as evidence to show racial bias. However, the limitations of our analysis became much clearer and apparent as we were finishing up this project and began thinking about our takeaways from it. 
+
+My favourite part of the project was learning how to use Shiny and making decision on how to show information in the best possible visual manner. This is something I wish to work on further with regards to future projects as well. 
+
+\newpage
+# Works Cited
+Kirill Müller (2019). hms: Pretty Time of Day. R package version 0.5.2. https://CRAN.R-project.org/package=hms.
+
+Pierson, Emma, et al. "A large-scale analysis of racial disparities in police stops across the United States." arXiv preprint arXiv:1706.05678 (2017). https://5harad.com/papers/100M-stops.pdf.
+
+R Core Team (2019). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. URL https://www.R-project.org/.
+
+Stephen Sefick Jr. (2016). Stream Metabolism-A package for calculating single station metabolism from diurnal Oxygen curves R package version 1.1.2. https://cran.r-project.org/package=StreamMetabolism.
+
+\newpage
+# Appendix A
+The following is code that generated the dataset that was used for our statistical analyses and visualizations.  Explanations for each function can be found in Section 2.  All code has been set to `eval=FALSE` in order to allow you to execute code chunk by chunk.
+
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+library(StreamMetabolism)
+library(hms)
+```
+
+```{r, eval=FALSE}
+get_time <- function(lat, long, date) {
+  #Takes lat, long, time, and date as input and classifies
+  #TRUE if the time is at day and FALSE if at night.
+  
+  sunrise <- sunrise.set(lat, long, date)$sunrise
+  attributes(sunrise)$tzone <- 'America/Los_Angeles'
+  sunrise <- as_hms(sunrise)
+  
+  sunset <- sunrise.set(lat, long, date)$sunset
+  attributes(sunset)$tzone <- 'America/Los_Angeles'
+  sunset <- as_hms(sunset)
+  
+  return(c(sunrise, sunset))
+}
+
+classify <- function(rise.set, time) {
+  #Takes in a vector with sunrise and sunset times,
+  #returning True if the time is during daylight.
+  
+  if (time < rise.set[2] && time >= rise.set[1])
+    return(TRUE)
+  
+  else
+    return(FALSE)
+}
+
+mutateClass <- function(df) {
+  #Takes a dataframe and adds the boolean day/night
+  #classification found via `classify` as a new column.
+  
+  classifications <- c()
+  timetoset <- c()
+  
+  for (i in 1:nrow(df)) {
+    time <- get_time(df$lat[i], df$lng[i], df$date[i])
+    timetoset[i] <- (time[2] - df$time[i])/60
+    classifications[i] <- classify(time, df$time[i])
+  }
+  
+  df <- df %>%
+    mutate(daytime = classifications) %>%
+    mutate(minsto.set = timetoset)
+}
+
+getCityCoords <- function(link) {
+  #Takes a link to data and assigns appropriate lat
+  #and lng coordinates.
+  
+  if (grepl('los_angeles', link))
+    return(c(34.052235, -118.243683))
+  
+  if (grepl('san_diego', link))
+    return(c(32.715736, -117.161087))
+  
+  if (grepl('oakland', link))
+    return(c(37.804363, -122.271111))
+  
+  if (grepl('san_jose', link))
+    return(c(37.335480, -121.893028))
+}
+
+getData <- function(link) {
+  #Takes a link to data and configures it as necessary.
+  #Samples n/10000 traffic stops.  Returns a mutated
+  #`daytime` variable.
+  
+  set.seed(47)
+  
+  raw <- readRDS(file = url(link))
+  
+  if (! 'lat' %in% colnames(raw)) {
+    raw <- raw %>%
+      mutate(lat = getCityCoords(link)[1]) %>%
+      mutate(lng = getCityCoords(link)[2])
+  }
+
+  clean <- raw %>%
+    select(c(date, time, lat, lng, subject_race)) %>%
+    drop_na() %>%
+    sample_n(nrow(raw)/100)
+  
+  return(mutateClass(clean))
+}
+
+parseData <- function(links, city.codes) {
+  #Takes in a list of URLs and city codes and
+  #merges the datasets that are scraped from the sources.
+  
+  master.frame <- getData(links[1])
+  master.frame <- master.frame %>% mutate(city = city.codes[1])
+  
+  for (i in 2:length(links)) {
+    data <- getData(links[i])
+    data <- data %>% mutate(city = city.codes[i])
+    master.frame <- full_join(master.frame, data)
+  }
+  
+  return(master.frame)
+}
+```
+
+# Appendix B
+The following is code that will perform the $\chi^{2}$ tests for independence that were described in Section 3.  This must be run after you have either loaded the `ca.df` dataset into your Global Environment or generated a local copy of the data (see Section 2 and Appendix A).
+
+```{r, eval=FALSE}
+#In General
+chisq.test(ca.df$subject_race, ca.df$daytime)
+
+#Local Inference for API
+ca.api <- ca.df %>%
+  filter(subject_race == "asian/pacific islander" | subject_race == "white")
+
+chisq.test(ca.api$subject_race, ca.api$daytime)
+
+#Local Inference for Black
+ca.black <- ca.df %>%
+  filter(subject_race == "black" | subject_race == "white")
+
+chisq.test(ca.black$subject_race, ca.black$daytime)
+
+#Local Inference for Hispanic
+ca.hisp <- ca.df %>%
+  filter(subject_race == "hispanic" | subject_race == "white")
+
+chisq.test(ca.hisp$subject_race, ca.hisp$daytime)
+```
+\newpage
+
+**Figure 1: for 10 hours before and after sunset in LA **
+```{r}
+cadataupdated <- read_csv("sppShiny/cadataupdated.csv")
+
+stops.day <- cadataupdated %>% filter(city == "la", daytime == "TRUE") %>%
+      filter(minsto.set < 600) %>%
+      group_by(subject_race) %>%
+      tally() %>%
+      mutate(proportion = n/ sum(n)) %>%
+      mutate_at(vars(proportion), funs(round(., 3))) 
+    
+    day.hist <- ggplot(stops.day, aes(x = subject_race, y= proportion))+
+        geom_bar(stat = "identity", , fill = "steelblue4")+ theme_minimal()+
+        ggtitle("Daytime Stops")+ xlab("Race") + ylab("Proportion of total stops")+
+      theme(axis.text.x=element_text(angle=50, size=9, vjust=0.5))
+      
+    
+  stops.night <- cadataupdated %>% filter(city == "la", daytime == "FALSE") %>%
+      filter(minsto.set < 600) %>%
+      group_by(subject_race) %>%
+      tally() %>%
+      mutate(proportion = n/ sum(n)) %>%
+      mutate_at(vars(proportion), funs(round(., 3))) 
+    
+   night.hist <- ggplot(stops.night, aes(x = subject_race, y= proportion))+
+       geom_bar(stat = "identity", , fill = "steelblue4")+ theme_minimal()+
+       ggtitle("Nightime Stops")+ xlab("Race") + ylab("Proportion of total stops")+
+     theme(axis.text.x=element_text(angle=50, size=9, vjust=0.5))
+
+    
+    plot_grid(day.hist, night.hist)
+    
+```
+
+**Figure 2: for 60 minutes before and after sunset in LA**
+```{r}
+stops.day.small <- cadataupdated %>% filter(city == "la", daytime == "TRUE") %>%
+      filter(minsto.set < 60) %>%
+      group_by(subject_race) %>%
+      tally() %>%
+      mutate(proportion = n/ sum(n)) %>%
+      mutate_at(vars(proportion), funs(round(., 3))) 
+    
+    day.hist <- ggplot(stops.day.small, aes(x = subject_race, y= proportion))+
+        geom_bar(stat = "identity", , fill = "steelblue4")+ theme_minimal()+
+        ggtitle("Daytime Stops")+ xlab("Race") + ylab("Proportion of total stops")+
+      theme(axis.text.x=element_text(angle=50, size=9, vjust=0.5))
+      
+    
+  stops.night.small <- cadataupdated %>% filter(city == "la", daytime == "FALSE") %>%
+      filter(minsto.set < 60) %>%
+      group_by(subject_race) %>%
+      tally() %>%
+      mutate(proportion = n/ sum(n)) %>%
+      mutate_at(vars(proportion), funs(round(., 3))) 
+    
+   night.hist <- ggplot(stops.night.small, aes(x = subject_race, y= proportion))+
+       geom_bar(stat = "identity", , fill = "steelblue4")+ theme_minimal()+
+       ggtitle("Nightime Stops")+ xlab("Race") + ylab("Proportion of total stops")+
+     theme(axis.text.x=element_text(angle=50, size=9, vjust=0.5))
+
+    
+    plot_grid(day.hist, night.hist)
+    
+```
+
+**Figure 3: Day/Night Split of total stops of white, black and hispanic drivers in LA**
+```{r}
+stops.white <- filter(cadataupdated, city == "la", subject_race == "white") %>% 
+       group_by(daytime) %>% 
+       tally() %>%
+       mutate(proportion = n / sum(n)  ) %>%
+       mutate_at(vars(proportion), funs(round(., 3)))
+     
+plot.white <- ggplot(stops.white, aes(x = "", y = proportion , fill = daytime))+
+       geom_bar(width = 1, stat = "identity", color = "white") + 
+       coord_polar("y", start = 0)+ 
+       theme_minimal() + labs(title = "White folks stopped" ) +
+       labs(fill = "Time of Day") +
+       scale_fill_manual(values = c("gold1","dodgerblue4"),
+                         labels = c("Day", "Night"))
+     
+stops.black <- filter(cadataupdated, city == "la", subject_race == "black") %>% 
+       group_by(daytime) %>% 
+       tally() %>%
+       mutate(proportion = n / sum(n)  ) %>%
+       mutate_at(vars(proportion), funs(round(., 3)))
+     
+plot.black <- ggplot(stops.black, aes(x = "", y = proportion , fill = daytime))+
+       geom_bar(width = 1, stat = "identity", color = "white") + 
+       coord_polar("y", start = 0)+ 
+       theme_minimal() + labs(title = "Black folks stopped" ) +
+       labs(fill = "Time of Day") +
+       scale_fill_manual(values = c("gold1","dodgerblue4"),
+                         labels = c("Day", "Night"))
+     
+stops.hispanic <- filter(cadataupdated, city == "la", subject_race == "hispanic") %>% 
+       group_by(daytime) %>% 
+       tally() %>%
+       mutate(proportion = n / sum(n)  ) %>%
+       mutate_at(vars(proportion), funs(round(., 3)))
+     
+plot.hispanic <- ggplot(stops.hispanic, aes(x = "", y = proportion , fill = daytime))+
+       geom_bar(width = 1, stat = "identity", color = "white") + 
+       coord_polar("y", start = 0)+ 
+       theme_minimal() + labs(title = "Hispanic folks stopped" ) +
+       labs(fill = "Time of Day") +
+       scale_fill_manual(values = c("gold1","dodgerblue4"),
+                         labels = c("Day", "Night"))
+  plot_grid(plot.white, plot.black, plot.hispanic)
+```
