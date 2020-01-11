@@ -1,4 +1,4 @@
-# Computattion Statistics Final Project 
+# Computational Statistics Final Project 
 # Open Policing Project
 ## Searching for police bias in traffic arrest trends across major U.S cities
 
