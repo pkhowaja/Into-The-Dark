@@ -22,3 +22,6 @@ E. Pierson, C. Simoiu, J. Overgoor, S. Corbett-Davies, D. Jenson, A. Shoemaker, 
 
 End Product: <br />
 For our final product we will be creating a Shiny application that contains a map of arrest rates by race and visualizations of different threshold test statistics. 
+
+Here is the link to it:
+ https://preetkhowaja.shinyapps.io/InTheDark/
